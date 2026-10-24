@@ -1,0 +1,207 @@
+#pragma kernel ComputeOrbit
+
+struct satelliteOrbitData
+{
+    float epoch;
+    float n0;
+    float e0;
+    float i0;
+    float M0;
+    float omega0;
+    float bigOmega0;
+    float bStar;
+};
+
+RWStructuredBuffer<satelliteOrbitData> satelliteData;
+float t;
+
+RWStructuredBuffer<float3> finalPositions;
+RWStructuredBuffer<float3> finalVelocities;
+
+static const float KE = 0.743669161e-1; // something to do with earth radii idfk
+static const float KMPER = 6378.135;
+//parameters for sgp4 density function
+static const float QOMS2T = 1.88027916E-9;
+static const float S = 1.01222928; //can change based on satellite perigee
+//zonal harmonics
+static const float AE = 1.0; //earth radii
+static const float J2 = 1.08262668e-3;
+static const float J3 = -0.253881E-5;
+static const float K2 = 5.413080E-4;
+static const float K4 = 0.62098875E-6;
+//solver params
+static const int iterations = 10;
+static const float tolerance = 1e-12;
+
+[numthreads(64, 1, 1)]
+void ComputeOrbit (uint3 id : SV_DispatchThreadID)
+{
+    satelliteOrbitData data = satelliteData[id.x];
+    float deltaT = t - data.epoch;
+    float n0 = data.n0;
+    float e0 = data.e0;
+    float i0 = data.i0;
+    float M0 = data.M0;
+    float omega0 = data.omega0;
+    float bigOmega0 = data.bigOmega0;
+    float bStar = data.bStar;
+
+    //recover orbital elements - mean motion and semi major axis
+    //first sma estimate using mean motion and grav param
+    float a1 = pow(KE / n0, 2.0 / 3.0);
+    //acount for change in orbit from uneven gravity from earth
+    float delta1 = 1.5 * (K2 / pow(a1, 2.0)) * ((3.0 * pow(cos(i0), 2.0) - 1.0) / pow(1.0 - pow(e0, 2.0), 1.5));
+    //recalculate sma estimate with change
+    float a0 = a1 * (1.0 - (1.0 / 3.0 * delta1) - pow(delta1, 2.0) - (134.0 / 81.0 * pow(delta1, 3.0)));
+    //recalculate orbit change with new sma estimate
+    float delta0 = 1.5 * (K2 / pow(a0, 2.0)) * ((3.0 * pow(cos(i0), 2.0) - 1.0) / pow(1.0 - pow(e0, 2.0), 1.5));
+    //final mean motion and sma estimates
+    float nDPrime0 = n0 / (1.0 + delta0);
+    float aDPrime0 = a0 / (1.0 - delta0);
+
+    //calculate perigee & apply corrections for lower perigees
+    float rp0 = aDPrime0 * (1.0 - e0); //perigee radius in earth radii
+    float ph0 = (rp0 - AE) * KMPER; //perigee height in km
+    float s = S;
+    float qoms2t = QOMS2T;
+    if (ph0 <= 156.0)
+    {
+        float Sstar = 0;
+        Sstar = rp0 - S + AE;
+
+        if (ph0 <= 98.0)
+        {
+            Sstar = 20.0 / KMPER + AE;
+        }
+        float QOMS2Tstar = pow(pow(QOMS2T, 0.25) + S - Sstar, 4.0);
+        s = Sstar;
+        qoms2t = QOMS2Tstar;
+    }
+    //calculating orbital static constants
+    float theta = cos(i0);
+    float xi = 1.0 / (aDPrime0 - s);
+    float beta0 = pow(1 - pow(e0, 2.0), 0.5);
+    float eta = aDPrime0 * e0 * xi;
+
+    //density function
+    float C2 = qoms2t * pow(xi, 4.0) * nDPrime0 * pow(beta0, 2.0) * pow(1.0 - pow(eta, 2.0), -3.5) * (aDPrime0 * (1 + 3.0 / 2.0 * pow(eta, 2.0) + 4.0 * e0 * pow(eta, 3.0)) +
+        3.0 / 2.0 * (K2 * xi / (1 - pow(eta, 2.0))) * (-0.5 + 1.5 * pow(theta, 2.0)) * (8.0 + 24.0 * pow(eta, 2.0) + 3.0 * pow(eta, 4.0)));
+    float C1 = bStar * C2;
+    float A30 = -J3 * pow(AE, 3.0);
+    float C3 = qoms2t * pow(xi, 5.0) * A30 * nDPrime0 * AE * sin(i0) / (K2 * e0);
+    float C4 = 2.0 * qoms2t * pow(xi, 4.0) * aDPrime0 * pow(beta0, 2.0) * pow(1.0 - pow(eta, 2.0), -3.5) * (2.0 * eta * (1 + e0 * eta) + 0.5 * e0 + 0.5 * pow(eta, 3.0) - 
+        2.0 * K2 * xi / aDPrime0 * (1 - pow(eta, 2)) * (3.0 * (1.0 - 3.0 * pow(theta, 2.0)) * (1.0 + 1.5 * pow(eta, 2.0) - 2.0 * e0 * eta - 0.5 * e0 * pow(eta, 3.0)) + 
+        0.75 * (1.0 - pow(theta, 2.0) * (2.0 * pow(eta, 2) - e0 * eta - e0 * pow(eta, 3))) * cos(2.0 * omega0)));
+    float C5 = qoms2t * pow(xi, 4.0) * aDPrime0 * pow(beta0, 2.0) * pow(1.0 - pow(eta, 2.0), -3.5) * (1.0 + 11.0 / 4.0 * eta * (eta + e0) + e0 * pow(eta, 3.0));
+    float D2 = 4.0 * aDPrime0  * xi * pow(C1, 2.0);
+    float D3 = 4.0 / 3.0 * aDPrime0 * pow(xi, 2.0) * (17.0 * aDPrime0 +s) * pow(C1, 3.0);
+    float D4 = 2.0 / 3.0 * aDPrime0 * pow(xi, 3.0) * (221.0 * aDPrime0 + 31.0 *s) * pow(C1, 4.0);
+    
+    //secular effects o atmospheric drag and gravitation
+    float MDF = M0 + (1.0 + (3.0 * K2 * (-1.0 + 3.0 * pow(theta, 2.0)) / (2.0 * pow(aDPrime0, 2.0) * pow(beta0, 3.0))) + 
+        3.0 * pow(K2, 2.0) * (13.0 - 78.0 * pow(theta, 2) + 137.0 * pow(theta, 4.0)) / (16.0 * pow(aDPrime0, 4.0) * pow(beta0, 7.0))) * nDPrime0 * (deltaT);
+    float omegaDF = omega0 + (-3.0 * K2 * (1.0 - 5.0 * pow(theta, 2.0)) / (2.0 * pow(aDPrime0, 2.0) * pow(beta0, 4.0)) + 
+        3.0 * pow(K2, 2.0) * (7.0 - 114.0 * pow(theta, 2) + 395.0 * pow(theta, 4.0)) / (16.0 * pow(aDPrime0, 4.0) * pow(beta0, 8.0)) +
+        5.0 * K4 * (3.0 - 36.0 * pow(theta, 2.0) + 49.0 * pow(theta, 4.0)) / (4.0 * pow(aDPrime0, 4.0) * pow(beta0, 8.0))) * nDPrime0 * (deltaT);
+    float bigOmegaDF = bigOmega0 + (-3.0 * K2 * theta / (pow(aDPrime0, 2.0) * pow(beta0, 4.0)) + 
+        3.0 * pow(K2, 2.0) * (4.0 * theta - 19.0 * pow(theta, 3.0)) / (2.0 * pow(aDPrime0, 4.0) * pow(beta0, 8.0)) +
+        5.0 * K4 * theta * (3.0 - 7.0 * pow(theta, 2)) / (2.0 * pow(aDPrime0, 4.0) * pow(beta0, 8.0))) * nDPrime0 * (deltaT);
+    float dOmega = bStar * C3 * cos(omega0) * (deltaT);
+    float dM = -2.0 / 3.0 * qoms2t * bStar * pow(xi, 4) * (AE / (e0 * eta)) * (pow(1.0 + eta * cos(MDF), 3.0) - pow(1.0 + eta * cos(M0), 3.0));
+    float Mp = MDF;
+    float omega = omegaDF;
+    float e = e0 - bStar * C4 * deltaT;
+    if (ph0 >= 220.0) //remove deltaM, deltaOmega, C5 terms for perigee height below 220 km
+    {
+        Mp = MDF + dOmega + dM;
+        omega = omegaDF - dOmega - dM;
+        e = e0 - bStar * C4 * deltaT - bStar * C5 * (sin(Mp) - sin(M0));
+    }
+    float bigOmega = bigOmegaDF - 11.5 * nDPrime0 * K2 * theta / (pow(aDPrime0, 2.0) * pow(beta0, 2.0)) * C1 * pow(deltaT, 2.0);
+    
+    float a = 0;
+    float bigL = 0;
+    if (ph0 < 220.0) //truncate a and bigL terms if perigee height below 220 km
+    {
+        a = aDPrime0 * pow(1.0 - C1 * (deltaT), 2.0);
+        bigL = Mp + omega + bigOmega + nDPrime0 * (1.5 * C1 * pow(deltaT, 2.0));
+    }
+    else
+    {
+        a = aDPrime0 * pow(1.0 - C1 * (deltaT) - D2 * pow(deltaT, 2.0) - D3 * pow(deltaT, 3.0) - D4 * pow(deltaT, 4.0), 2.0);
+        bigL = Mp + omega + bigOmega + nDPrime0 * (1.5 * C1 * pow(deltaT, 2.0) + (D2 + 2.0 * pow(C2, 2.0)) * pow(deltaT, 3.0) +
+            0.25 * (3.0 * D3 + 12.0 * C1 * D2 + 10.0 * pow(C1, 3)) * pow(deltaT, 4.0) +
+            0.2 * (3.0 * D4 + 12.0 * C1 * D3 + 6.0 * pow(D2, 2) + 30.0 * pow(C1, 2) * D2 + 15.0 * pow(C1, 4)) * pow(deltaT, 5.0));
+    }
+    float bigBeta = sqrt(1.0 - pow(e, 2.0));
+    float n = KE / pow(a, 1.5);
+
+    //long periodic terms
+    float axN = e * cos(omega);
+    float bigLL = A30 * sin(i0) / (8.0 * K2 * a * pow(bigBeta, 2.0)) * e * cos(omega) * (3.0 + 5.0 * theta) / (1.0 + theta);
+    float ayNL = A30 * sin(i0) / (4.0 * K2 * a * pow(bigBeta, 2.0));
+    float bigLT = bigL + bigLL;
+    float ayN = e * sin(omega) + ayNL;
+    float Ue = bigLT - bigOmega;
+    
+    //solve Kepler's equation for (E + omega)
+    float Eomega = Ue;
+    for (int i = 0; i < iterations; i++)
+    {
+        float deltaEomega = (Ue - ayN * cos(Eomega) + axN * sin(Eomega) - Eomega) / (-ayN * sin(Eomega) - axN * cos(Eomega) + 1.0);
+        if (abs(deltaEomega) >= 0.95)
+        {
+            deltaEomega =
+                deltaEomega > 0.0
+                ? 0.95
+                : -0.95;
+        }
+
+        Eomega += deltaEomega;
+        if (abs(deltaEomega) < tolerance) break;
+    }
+
+    //short-period periodics
+    float eCosE = axN * cos(Eomega) + ayN * sin(Eomega);
+    float eSinE = axN * sin(Eomega) - ayN * cos(Eomega);
+    float eL = sqrt(pow(axN, 2.0) + pow(ayN, 2.0));
+    float pL = a * (1.0 - pow(eL, 2.0));
+    float r = a * (1.0 - eCosE);
+    float rDot = KE * sqrt(a) / r * eSinE;
+    float rfDot = KE * sqrt(pL) / r;
+    float cosu = a / r * (cos(Eomega) - axN + ayN * eSinE / (1.0 + sqrt(1.0 - pow(eL, 2.0))));
+    float sinu = a / r * (sin(Eomega) - ayN - axN * eSinE / (1.0 + sqrt(1.0 - pow(eL, 2.0))));
+    float u = atan2(sinu, cosu);
+    float deltar = K2 / (2.0 * pL) * (1.0 - pow(theta, 2.0)) * cos(2.0 * u);
+    float deltau = -K2 / (4.0 * pL) * (7.0 * pow(theta, 2) - 1.0) * sin(2.0 * u);
+    float deltaBigOmega = 3.0 * K2 * theta / (2.0 * pow(pL, 2.0)) * sin(2.0 * u);
+    float deltai = 3.0 * K2 * theta / (2.0 * pow(pL, 2.0)) * sin(i0) * cos(2.0 * u);
+    float deltarDot = -K2 * n / pL * (1.0 - pow(theta, 2.0)) * sin(2.0 * u);
+    float deltarfDot = K2 * n / pL * ((1.0 - pow(theta, 2.0)) * cos(2.0 * u) - 1.5 * (1.0 - 3.0 * pow(theta, 2.0)));
+    
+    //osculating quantities
+    float rk = r * (1.0 - 1.5 * K2 * sqrt(1.0 - pow(eL, 2.0)) / pow(pL, 2.0) * (3.0 * pow(theta, 2.0) - 1.0)) + deltar;
+    float uk = u + deltau;
+    float bigOmegak = bigOmega + deltaBigOmega;
+    float ik = i0 + deltai;
+    float rDotk = rDot + deltarDot;
+    float rfDotk = rfDot + deltarfDot;
+
+    //unit orientation vectors SPG4
+    float3 M = float3(
+        -sin(bigOmegak) * cos(ik),
+        cos(bigOmegak) * cos(ik),
+        sin(ik)
+    );
+    float3 N = float3(
+        cos(bigOmegak),
+        sin(bigOmegak),
+        0
+    );
+    float3 U = M * sin(uk) + N * cos(uk);
+    float3 V = M * cos(uk) - N * sin(uk);
+
+    //teme values
+    finalPositions[id.x] = U * rk;
+    finalVelocities[id.x] = U * rDotk + V * rfDotk;
+}
