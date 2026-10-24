@@ -3,21 +3,44 @@ using System.Collections;
 using UnityEngine.Networking;
 using System;
 using System.IO;
+using System.Threading.Tasks;
+using System.Threading;
 
 public class DataNetworkHandler : MonoBehaviour
 {
     private string requestURL = "https://celestrak.org/NORAD/elements/gp.php?GROUP=active&FORMAT=CSV";
-    public void GetSatelliteData(string orbitDataFilePath, Action<int, string> onComplete)
+    public async Task<int> GetSatelliteData(string orbitDataFilePath, CancellationToken token)
     {
         if (ValidTimePassed(out float time))
         {
             PlayerPrefs.SetString("LastRequestTime", DateTime.UtcNow.ToString());
             PlayerPrefs.SetString("LastRequestURL", requestURL);
-            StartCoroutine(GetSatelliteDataCoroutine(orbitDataFilePath, onComplete));
+            UnityWebRequest www = UnityWebRequest.Get(requestURL);
+            var operation = www.SendWebRequest();
+
+            while (!operation.isDone)
+            {
+                if (token.IsCancellationRequested)
+                {
+                    www.Abort();
+                    token.ThrowIfCancellationRequested();
+                }
+                await Task.Yield();
+            }
+
+            if (www.result != UnityWebRequest.Result.Success)
+            {
+                throw new Exception($"Network error: {www.error}");
+            }
+            else
+            {
+                File.WriteAllText(orbitDataFilePath, www.downloadHandler.text);
+                return 1;
+            }
         }
         else
         {
-            onComplete?.Invoke(1, $"Not enough time passed. ({time} minutes)");
+            return 0;
         }
     }
 
@@ -35,21 +58,5 @@ public class DataNetworkHandler : MonoBehaviour
         Debug.Log(lastRequestURL);
         time = (float)timePassed;
         return !(timePassed < 120.0 && requestURL == lastRequestURL); //returns false if less than 2 hours after last request and we are getting same request
-    }
-
-    private IEnumerator GetSatelliteDataCoroutine(string filePath, Action<int, string> onComplete)
-    {
-        UnityWebRequest www = UnityWebRequest.Get(requestURL);
-        yield return www.SendWebRequest();
-
-        if (www.result != UnityWebRequest.Result.Success)
-        {
-            onComplete?.Invoke(0, www.error);
-        }
-        else
-        {
-            File.WriteAllText(filePath, www.downloadHandler.text);
-            onComplete?.Invoke(2, "Success");
-        }
     }
 }

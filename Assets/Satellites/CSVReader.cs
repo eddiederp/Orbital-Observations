@@ -5,20 +5,21 @@ using System;
 using System.Linq;
 using System.Globalization;
 using System.IO;
+using System.Threading.Tasks;
+using System.Threading;
 
 public class CSVReader
 {
     int headerLines = 1;
     char delimiter = ',';
 
-    public List<SatelliteOMMData> ReadOrbitData(string orbitDataFilePath)
+    public async Task<List<SatelliteOMMData>> ReadOrbitData(string[] orbitDataLines, CancellationToken token)
     {
         List<SatelliteOMMData> orbitDataList = new List<SatelliteOMMData>();
-        
-        string[] orbitDataLines = File.ReadAllLines(orbitDataFilePath);
 
         for (int i = headerLines; i < orbitDataLines.Length; i++)
         {
+            token.ThrowIfCancellationRequested();
             string[] elements = orbitDataLines[i].Split(delimiter);
             try
             {
@@ -47,7 +48,10 @@ public class CSVReader
                     meanMotionDerivative = float.Parse(elements[15], NumberStyles.Float, CultureInfo.InvariantCulture),
                     meanMotionDoubleDerivative = float.Parse(elements[16], NumberStyles.Float, CultureInfo.InvariantCulture)
                 };
-                orbitDataList.Add(data);
+                if (data.eccentricity < 0.9f && (!data.name.Contains("ISS") || data.name == "ISS (ZARYA)") && data.name != "POISK")
+                {
+                    orbitDataList.Add(data);
+                }
             }
             catch(IndexOutOfRangeException)
             {
@@ -58,15 +62,13 @@ public class CSVReader
 
         return orbitDataList;
     }
-    public List<SatelliteInfo> ReadSatelliteInfo(TextAsset infoFile)
+    public async Task<List<SatelliteInfo>> ReadSatelliteInfo(string[] infoLines, CancellationToken token)
     {
         List<SatelliteInfo> infoList = new List<SatelliteInfo>();
-        
-        string infoText = infoFile.text;
-        string[] infoLines = infoText.Split(Environment.NewLine);
 
         for (int i = headerLines; i < infoLines.Length; i++)
         {
+            token.ThrowIfCancellationRequested();
             string[] elements = infoLines[i].Split(delimiter);
             try
             {
