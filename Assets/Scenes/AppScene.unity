@@ -6508,6 +6508,8 @@ MonoBehaviour:
   satelliteInfoText: {fileID: 895630549}
   satelliteIDText: {fileID: 916174486}
   satelliteManager: {fileID: 1443340254}
+  satelliteTrackingInput: {fileID: 1361358544}
+  cameraController: {fileID: 330585548}
 --- !u!114 &1897531378
 MonoBehaviour:
   m_ObjectHideFlags: 0

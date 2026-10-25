@@ -31,18 +31,7 @@ public class SatelliteTrackingInput : MonoBehaviour
             int id = 0;
             if (int.TryParse(satelliteTrackingField.text, out id))
             {
-                Satellite satellite = satelliteManager.satellites.Find(s => s.OMMData.noradID == id);
-                if (satellite != null)
-                {
-                    cameraController.DeselectSatellite();
-                    cameraController.SelectSatellite(satellite);
-                    satelliteTrackingText.text = "Tracking Satellite: " + satellite.name;
-                }
-                else
-                {
-                    cameraController.DeselectSatellite();
-                    satelliteTrackingText.text = notFoundError;
-                }
+                TrackSatellite(id);
             }
             else
             {
@@ -54,6 +43,22 @@ public class SatelliteTrackingInput : MonoBehaviour
         {
             cameraController.DeselectSatellite();
             satelliteTrackingText.text = noSatelliteTracked;
+        }
+    }
+
+    public void TrackSatellite(int id)
+    {
+        Satellite satellite = satelliteManager.satellites.Find(s => s.OMMData.noradID == id);
+        if (satellite != null)
+        {
+            cameraController.DeselectSatellite();
+            cameraController.SelectSatellite(satellite);
+            satelliteTrackingText.text = "Tracking Satellite: " + satellite.name;
+        }
+        else
+        {
+            cameraController.DeselectSatellite();
+            satelliteTrackingText.text = notFoundError;
         }
     }
 }

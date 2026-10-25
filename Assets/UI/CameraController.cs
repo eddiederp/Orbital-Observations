@@ -1,3 +1,4 @@
+using Unity.VisualScripting;
 using UnityEngine;
 using UnityEngine.EventSystems;
 
@@ -25,6 +26,11 @@ public class CameraController : MonoBehaviour
         satelliteDistance = 4000f;
         isTrackingSatellite = false;
         currentSatellite = null;
+    }
+
+    public Satellite GetCurrentTrackedSatellite()
+    {
+        return currentSatellite;
     }
 
     // Update is called once per frame

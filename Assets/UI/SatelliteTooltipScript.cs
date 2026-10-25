@@ -1,5 +1,6 @@
 using TMPro;
 using UnityEngine;
+using UnityEngine.InputSystem;
 
 public class SatelliteTooltipScript : MonoBehaviour
 {
@@ -8,6 +9,8 @@ public class SatelliteTooltipScript : MonoBehaviour
     public TMP_Text satelliteInfoText;
     public TMP_Text satelliteIDText;
     public SatelliteManager satelliteManager;
+    public SatelliteTrackingInput satelliteTrackingInput;
+    public CameraController cameraController;
 
     void Start()
     {
@@ -31,6 +34,13 @@ public class SatelliteTooltipScript : MonoBehaviour
             {
                 SetTooltipActive(true);
                 Satellite satellite = satelliteManager.satellites.Find(s => s.gameObject == hitObject);
+                if (Input.GetMouseButtonDown(0))
+                {
+                    if (satellite != cameraController.GetCurrentTrackedSatellite())
+                    {
+                        satelliteTrackingInput.TrackSatellite(satellite.OMMData.noradID);
+                    }
+                }
                 satelliteNameText.text = satellite.name;
                 satelliteIDText.text = "NORAD ID: " + satellite.OMMData.noradID.ToString();
                 satelliteInfoText.text = SetInfoName(satellite.info);
