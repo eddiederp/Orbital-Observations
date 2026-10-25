@@ -1,5 +1,6 @@
 using TMPro;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
 
 public class SatelliteTooltipScript : MonoBehaviour
@@ -34,7 +35,7 @@ public class SatelliteTooltipScript : MonoBehaviour
             {
                 SetTooltipActive(true);
                 Satellite satellite = satelliteManager.satellites.Find(s => s.gameObject == hitObject);
-                if (Input.GetMouseButtonDown(0))
+                if (Input.GetMouseButtonDown(0) && !EventSystem.current.IsPointerOverGameObject())
                 {
                     if (satellite != cameraController.GetCurrentTrackedSatellite())
                     {
