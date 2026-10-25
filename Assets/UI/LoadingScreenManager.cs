@@ -17,20 +17,30 @@ public class LoadingScreenManager : MonoBehaviour
     {
         if (manager.finishedLoading == false)
         {
-            Debug.Log("yes");
             SetProgress();
         }
         else
         {
-            Debug.Log("no");
             loadingScreen.SetActive(false);
-            this.enabled = false;
+            enabled = false;
         }
     }
 
     void SetProgress()
     {
-        string text = $"Loaded {manager.currentSatellites} out of {manager.totalSatellites}";
+        string text;
+        switch (manager.totalSatellites)
+        {
+            case -2:
+                text = "Fetching Satellite Data";
+                break;
+            case -1:
+                text = "Parsing Satellite Data";
+                break;
+            default:
+                text = $"Loaded {manager.currentSatellites} out of {manager.totalSatellites}";
+                break;
+        }
         progress.text = text;
     }
 }

@@ -21,6 +21,7 @@ public class SatelliteManager : MonoBehaviour
     public List<Satellite> satellites;
     public List<SatelliteOrbitComputeData> satelliteOrbitData;
     public List<SatelliteInfo> allSatelliteInfoDataset;
+    public SatelliteInfoDisplayManager satelliteInfoDisplay;
     [Header("Parameters")]
     public int currentCategory;
     int numCategories = 6;
@@ -65,7 +66,7 @@ public class SatelliteManager : MonoBehaviour
 
     void LoadDependencies()
     {
-        reader = new CSVReader();
+        reader = new CSVReader(numCategories);
         satellites = new List<Satellite>();
         satelliteOrbitData = new List<SatelliteOrbitComputeData>();
         solver = new SGP4Solver(orbitComputeSolver);
@@ -76,13 +77,16 @@ public class SatelliteManager : MonoBehaviour
         try
         {
             await networkHandler.GetSatelliteData(csvFilePath, token); //get celestrak data and write to csv if enough time has passed
+            totalSatellites = -1; //signal to loading screen we have finished loading data
 
             string[] ommDataLines = File.ReadAllLines(csvFilePath); 
             string[] infoLines = satelliteInfoFile.text.Split(Environment.NewLine);
-        
+
+            Dictionary<int, Dictionary<string, int>> occurenceDict;
             List<SatelliteOMMData> satelliteData = await Task.Run(() => reader.ReadOrbitData(ommDataLines, token));
-            allSatelliteInfoDataset = await Task.Run(() => reader.ReadSatelliteInfo(infoLines, token));
-            
+            (allSatelliteInfoDataset, occurenceDict) = await Task.Run(() => reader.ReadSatelliteInfo(infoLines, token));
+            SatelliteCategorizer.occurenceDictionary = occurenceDict; // pass occurencedict to categorizer
+
             totalSatellites = satelliteData.Count;
             currentSatellites = 0;
 
@@ -124,6 +128,7 @@ public class SatelliteManager : MonoBehaviour
             }
 
             finishedLoading = true;
+            satelliteInfoDisplay.InitInfoDisplay();
         }
         catch (OperationCanceledException)
         {

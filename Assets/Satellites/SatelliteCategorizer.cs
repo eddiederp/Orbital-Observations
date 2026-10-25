@@ -10,6 +10,8 @@ public class SatelliteCategorizer
     public static Material otherMat;
     public static Material noDataMat;
 
+    public static Dictionary<int, Dictionary<string, int>> occurenceDictionary;
+
     static Dictionary<string, Material> countryMaterials;
     static Dictionary<string, Material> orbitClassMaterials;
     static Dictionary<string, Material> orbitTypeMaterials;
@@ -91,9 +93,9 @@ public class SatelliteCategorizer
     {
         otherMat = new Material(Shader.Find("Custom/SphereShader")) {color = Color.gray8};
         noDataMat = new Material(Shader.Find("Custom/SphereShader")) {color = Color.gray3};
+        occurenceDictionary = new Dictionary<int, Dictionary<string, int>>();
         countryMaterials = new Dictionary<string, Material>()
         {
-            {"Multinational", new Material(Shader.Find("Custom/SphereShader")) {color = Color.white}},
             {"USA", new Material(Shader.Find("Custom/SphereShader")) {color = Color.cyan}},
             {"ESA", new Material(Shader.Find("Custom/SphereShader")) {color = Color.blue}},
             {"Russia", new Material(Shader.Find("Custom/SphereShader")) {color = Color.green}},
@@ -101,7 +103,8 @@ public class SatelliteCategorizer
             {"India", new Material(Shader.Find("Custom/SphereShader")) {color = Color.orange}},
             {"Canada", new Material(Shader.Find("Custom/SphereShader")) {color = Color.hotPink}},
             {"Japan", new Material(Shader.Find("Custom/SphereShader")) {color = Color.purple}},
-            {"United Kingdom", new Material(Shader.Find("Custom/SphereShader")) {color = Color.pink}}
+            {"United Kingdom", new Material(Shader.Find("Custom/SphereShader")) {color = Color.pink}},
+            {"Multinational", new Material(Shader.Find("Custom/SphereShader")) {color = Color.white}}
         };
         orbitClassMaterials = new Dictionary<string, Material>()
         {
@@ -112,8 +115,8 @@ public class SatelliteCategorizer
         };
         orbitTypeMaterials = new Dictionary<string, Material>()
         {
-            {"Sun-Synchronous", new Material(Shader.Find("Custom/SphereShader")) {color = Color.yellow}},
             {"Non-Polar Inclined", new Material(Shader.Find("Custom/SphereShader")) {color = Color.green}},
+            {"Sun-Synchronous", new Material(Shader.Find("Custom/SphereShader")) {color = Color.yellow}},
             {"Polar", new Material(Shader.Find("Custom/SphereShader")) {color = Color.cyan}},
             {"Molniya", new Material(Shader.Find("Custom/SphereShader")) {color = Color.red}},
             {"None", new Material(Shader.Find("Custom/SphereShader")) {color = Color.white}},

@@ -10,8 +10,14 @@ using System.Threading;
 
 public class CSVReader
 {
+    int numCategories;
     int headerLines = 1;
     char delimiter = ',';
+
+    public CSVReader(int categories)
+    {
+        numCategories = categories;
+    }
 
     public async Task<List<SatelliteOMMData>> ReadOrbitData(string[] orbitDataLines, CancellationToken token)
     {
@@ -62,9 +68,14 @@ public class CSVReader
 
         return orbitDataList;
     }
-    public async Task<List<SatelliteInfo>> ReadSatelliteInfo(string[] infoLines, CancellationToken token)
+    public async Task<(List<SatelliteInfo>, Dictionary<int, Dictionary<string, int>>)> ReadSatelliteInfo(string[] infoLines, CancellationToken token)
     {
         List<SatelliteInfo> infoList = new List<SatelliteInfo>();
+        Dictionary<int, Dictionary<string, int>> occurenceDict = new Dictionary<int, Dictionary<string, int>>();
+        for (int i = 0; i < numCategories; i++)
+        {
+            occurenceDict[i] = new Dictionary<string, int>();    
+        }
 
         for (int i = headerLines; i < infoLines.Length; i++)
         {
@@ -96,6 +107,32 @@ public class CSVReader
                     cosparID = elements[14],
                     noradID = int.Parse(elements[15]),
                 };
+
+                for (int category = 0; category < numCategories; category++)
+                {
+                    string item = info.GetVariableFromCategoryEnum(category);
+                    if (item.Contains('/'))
+                    {
+                        item = item.Split('/')[0]; //first string in list
+                    }
+                    if (!occurenceDict[category].ContainsKey(item))
+                    {
+                        occurenceDict[category][item] = 1;
+                    }
+                    else
+                    {
+                        occurenceDict[category][item] += 1;
+                    }
+                }    
+                // for category, item in satelliteDict.items():
+                //     if not (category in occurences.keys()):
+                //         occurences[category] = {}
+                //     else:
+                //         if not (item in occurences[category].keys()):
+                //             occurences[category][item] = 1
+                //         else:
+                //             occurences[category][item] += 1
+
                 infoList.Add(info);
             }
             catch(IndexOutOfRangeException)
@@ -110,6 +147,6 @@ public class CSVReader
             }
         }
 
-        return infoList;
+        return (infoList, occurenceDict);
     }
 }
