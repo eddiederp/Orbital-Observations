@@ -5,7 +5,7 @@
 
 If you just want to run the app the without needing Unity:
 
-1. Go to the **[Releases Page](https://github.com/eddiederp/Orbital-Observations/releases/tag/v1.0.0)** on the right side of the web page.
+1. Go to the **[Releases Page](https://github.com/eddiederp/Orbital-Observations/releases)** on the right side of the web page.
 2. Download and extract the version specific to your platform (just Windows or Linux right now)
 3. Follow installation instructions listed for your platform in the release description.
 
